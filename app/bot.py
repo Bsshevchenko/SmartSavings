@@ -175,8 +175,8 @@ def kb_amount_tab(st: FormState) -> InlineKeyboardMarkup:
         kb.row(*btns)
     kb.row(InlineKeyboardButton(text="🧹 Очистить", callback_data="clear"))
     kb.row(
-        InlineKeyboardButton(text="💱 Валюта (Готово)", callback_data="go:currency"),
         InlineKeyboardButton(text="🏷 Категория", callback_data="go:category"),
+        InlineKeyboardButton(text="💱 Валюта", callback_data="go:currency"),
     )
     kb.row(InlineKeyboardButton(text="✅ Подтвердить", callback_data="submit"))
     return kb.as_markup()
