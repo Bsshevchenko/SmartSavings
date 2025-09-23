@@ -13,6 +13,14 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from dotenv import load_dotenv
 
+# >>> NEW: DB / repo
+from app.db import init_db, get_session
+from app.db import Currency, Category, User
+from app.repo import (
+    ensure_user, get_user_prefs_snapshot, add_custom_currency,
+    add_custom_category, add_entry, list_user_currencies, list_user_categories
+)
+
 load_dotenv()
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 if not BOT_TOKEN:
@@ -101,7 +109,6 @@ async def safe_delete(bot: Bot, chat_id: int, message_id: int | None):
     try:
         await bot.delete_message(chat_id, message_id)
     except Exception:
-        # в личке Telegram может не дать удалить сообщение пользователя — игнорируем
         pass
 
 # ================== Состояние ==================
@@ -134,7 +141,7 @@ def render_card(st: FormState) -> str:
         "Сначала введи сумму, затем выбери валюту и категорию. Можно переходить между вкладками."
     )
 
-# ================== Клавиатуры ==================
+# ================== Клавиатуры (без изменений) ==================
 def kb_mode_tabs(st: FormState) -> list[InlineKeyboardButton]:
     def lab(m):
         meta = MODE_META[m]
@@ -144,9 +151,7 @@ def kb_mode_tabs(st: FormState) -> list[InlineKeyboardButton]:
 
 def kb_amount_tab(st: FormState) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
-    # режимы — ТОЛЬКО здесь
     kb.row(*kb_mode_tabs(st))
-    # цифры 3×3 + нижний ряд . 0 ⌫
     for row in [["1","2","3"],["4","5","6"],["7","8","9"],[".","0","⌫"]]:
         btns = []
         for t in row:
@@ -155,14 +160,11 @@ def kb_amount_tab(st: FormState) -> InlineKeyboardMarkup:
                 cb = "backspace"
             btns.append(InlineKeyboardButton(text=t, callback_data=cb))
         kb.row(*btns)
-    # Очистить — 1 ряд
     kb.row(InlineKeyboardButton(text="🧹 Очистить", callback_data="clear"))
-    # Валюта + Категория — 1 ряд
     kb.row(
         InlineKeyboardButton(text="💱 Валюта (Готово)", callback_data="go:currency"),
         InlineKeyboardButton(text="🏷 Категория", callback_data="go:category"),
     )
-    # Подтвердить — 1 ряд
     kb.row(InlineKeyboardButton(text="✅ Подтвердить", callback_data="submit"))
     return kb.as_markup()
 
@@ -258,6 +260,14 @@ def kb_manage_list(items: list[str], kind: str, mode: str | None = None, page: i
 @r.message(CommandStart())
 async def start(m: Message, state: FSMContext):
     await state.clear()
+
+    # >>> NEW: DB user + прогрев кастомов в кэш
+    async with await get_session() as session:
+        await ensure_user(session, m.from_user.id, m.from_user.username)
+        snap = await get_user_prefs_snapshot(session, m.from_user.id)
+    USER_PREFS[m.from_user.id]["currencies"] = snap["currencies"]
+    USER_PREFS[m.from_user.id]["categories"] = snap["categories"]
+
     st = FormState()
     await state.set_state(Flow.form)
     msg = await m.answer(render_card(st), reply_markup=kb_amount_tab(st), parse_mode="HTML")
@@ -377,8 +387,7 @@ async def cur_add_cancel(cb: CallbackQuery, state: FSMContext):
     st.pending_kind = None
     await state.update_data(st=st.__dict__)
     await state.set_state(Flow.form)
-    await safe_delete(cb.bot, cb.message.chat.id, cb.message.message_id)  # удаляем подсказку
-    # вернуть верхнее окно (вкладка валют)
+    await safe_delete(cb.bot, cb.message.chat.id, cb.message.message_id)
     st.tab = "currency"
     await cb.bot.edit_message_text(
         chat_id=cb.message.chat.id,
@@ -397,8 +406,14 @@ async def lock_during_add_currency(cb: CallbackQuery, state: FSMContext):
 @r.message(Flow.add_currency, F.text)
 async def cur_add_save(m: Message, state: FSMContext):
     text = m.text.strip()
+
+    # >>> NEW: сохранить кастом в БД и обновить кэш
+    async with await get_session() as session:
+        await ensure_user(session, m.from_user.id, m.from_user.username)
+        await add_custom_currency(session, m.from_user.id, text)
+        USER_PREFS[m.from_user.id]["currencies"] = await list_user_currencies(session, m.from_user.id)
+
     data = await state.get_data(); st = FormState(**data["st"])
-    uniq_push_front(USER_PREFS[m.from_user.id]["currencies"], text)
     st.pending_kind = None
     await state.update_data(st=st.__dict__)
     await state.set_state(Flow.form)
@@ -427,6 +442,14 @@ async def cur_del(cb: CallbackQuery, state: FSMContext):
     name = cb.data.split(":",3)[3]
     arr = USER_PREFS[cb.from_user.id]["currencies"]
     arr[:] = [x for x in arr if x.lower()!=name.lower()]
+
+    # >>> NEW: удалить из БД тоже
+    async with await get_session() as session:
+        # простое удаление: перезальём весь список пользователя
+        from sqlalchemy import delete
+        await session.execute(delete(Currency).where(Currency.user_id == cb.from_user.id, Currency.code.ilike(name)))
+        await session.commit()
+
     await cb.message.edit_reply_markup(reply_markup=kb_manage_list(arr, "cur"))
     await cb.answer(f"Удалено: {name}")
 
@@ -492,8 +515,7 @@ async def cat_add_cancel(cb: CallbackQuery, state: FSMContext):
     st.pending_kind = None
     await state.update_data(st=st.__dict__)
     await state.set_state(Flow.form)
-    await safe_delete(cb.bot, cb.message.chat.id, cb.message.message_id)  # подсказку убрать
-    # вернуть верхнее окно
+    await safe_delete(cb.bot, cb.message.chat.id, cb.message.message_id)
     st.tab = "category"
     await cb.bot.edit_message_text(
         chat_id=cb.message.chat.id,
@@ -512,12 +534,17 @@ async def lock_during_add_category(cb: CallbackQuery, state: FSMContext):
 @r.message(Flow.add_category, F.text)
 async def cat_add_save(m: Message, state: FSMContext):
     text = m.text.strip()
+
+    # >>> NEW: сохранить в БД и обновить кэш
     data = await state.get_data(); st = FormState(**data["st"])
-    uniq_push_front(USER_PREFS[m.from_user.id]["categories"][st.mode], text)
+    async with await get_session() as session:
+        await ensure_user(session, m.from_user.id, m.from_user.username)
+        await add_custom_category(session, m.from_user.id, st.mode, text)
+        USER_PREFS[m.from_user.id]["categories"][st.mode] = await list_user_categories(session, m.from_user.id, st.mode)
+
     st.pending_kind = None
     await state.update_data(st=st.__dict__)
     await state.set_state(Flow.form)
-    # обновляем верхнее окно (вкладка категории)
     bot: Bot = m.bot
     st.tab = "category"
     await bot.edit_message_text(
@@ -527,7 +554,6 @@ async def cat_add_save(m: Message, state: FSMContext):
         reply_markup=kb_category_tab(m.from_user.id, st),
         parse_mode="HTML"
     )
-    # удаляем подсказку и сам ввод
     await safe_delete(bot, m.chat.id, st.prompt_msg_id)
     await safe_delete(bot, m.chat.id, m.message_id)
 
@@ -552,6 +578,15 @@ async def cat_manage_ops(cb: CallbackQuery, state: FSMContext):
     if op == "del":
         name = rest[0]
         arr[:] = [x for x in arr if x.lower()!=name.lower()]
+
+        # >>> NEW: удалить из БД тоже
+        async with await get_session() as session:
+            from sqlalchemy import delete
+            await session.execute(delete(Category).where(
+                Category.user_id == cb.from_user.id, Category.mode == mode, Category.name.ilike(name)
+            ))
+            await session.commit()
+
         await cb.message.edit_reply_markup(reply_markup=kb_manage_list(arr, "cat", mode=mode))
         await cb.answer(f"Удалено: {name}")
     elif op == "page":
@@ -573,9 +608,15 @@ async def submit(cb: CallbackQuery, state: FSMContext):
         await cb.answer("Выбери валюту", show_alert=True); return
     if not st.category:
         await cb.answer("Выбери категорию", show_alert=True); return
+
+    # >>> NEW: записать в БД
+    async with await get_session() as session:
+        await ensure_user(session, cb.from_user.id, cb.from_user.username)
+        await add_entry(session, cb.from_user.id, st.mode, Decimal(st.amount_str.replace(",", ".")), st.currency, st.category, note=None)
+
     m = MODE_META[st.mode]
     msg = (
-        f"✅ Принял (демо, без сохранения):\n\n"
+        f"✅ Сохранено:\n\n"
         f"• {m['title']}: {fmt_money_str(st.amount_str)} {st.currency}\n"
         f"• Категория: {st.category}\n\n"
         "Начать заново: /start"
@@ -586,6 +627,8 @@ async def submit(cb: CallbackQuery, state: FSMContext):
 
 # ================== Запуск ==================
 async def main():
+    # >>> NEW: инициализация БД один раз
+    await init_db()
     bot = Bot(BOT_TOKEN)
     await dp.start_polling(bot)
 
