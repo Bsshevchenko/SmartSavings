@@ -1,0 +1,14 @@
+services:
+  smart_savings_bot:
+    build: .
+    container_name: smart_savings_bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    # База/файлы останутся на хосте
+    volumes:
+      - ./data:/app/data
+    working_dir: /app
+    command: python -m app.bot
+    environment:
+      - TZ=UTC
