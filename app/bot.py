@@ -15,11 +15,14 @@ from dotenv import load_dotenv
 
 # >>> NEW: DB / repo
 from app.db import init_db, get_session
-from app.db import Currency, Category, User
+from app.db import Currency, Category, User, Entry
 from app.repo import (
     ensure_user, get_user_prefs_snapshot, add_custom_currency,
     add_custom_category, add_entry, list_user_currencies, list_user_categories
 )
+
+# NEW: SQL helpers
+from sqlalchemy import select, delete
 
 load_dotenv()
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -110,6 +113,16 @@ async def safe_delete(bot: Bot, chat_id: int, message_id: int | None):
         await bot.delete_message(chat_id, message_id)
     except Exception:
         pass
+
+# >>> NEW: нормализация строки суммы для поля ввода (чтобы 43.00 -> "43")
+def normalize_amount_input(value) -> str:
+    try:
+        d = Decimal(str(value))
+        s = format(d, "f")          # без экспоненты
+        s = s.rstrip("0").rstrip(".") or "0"
+        return s
+    except Exception:
+        return str(value)
 
 # ================== Состояние ==================
 @dataclass
@@ -255,6 +268,27 @@ def kb_manage_list(items: list[str], kind: str, mode: str | None = None, page: i
         )
         kb.row(InlineKeyboardButton(text="↩️ Готово", callback_data=f"mg:cat:{mode}:done"))
     return kb.as_markup()
+
+# ================== ВСПОМОГАТЕЛЬНОЕ: кнопки действий записи ==================
+
+async def build_entry_actions_kb(user_id: int, entry_id: int) -> InlineKeyboardMarkup | None:
+    """
+    Возвращает клавиатуру с кнопками Удалить/Изменить,
+    только если entry_id входит в последние 10 записей пользователя.
+    """
+    async with await get_session() as session:
+        last_ids = (await session.scalars(
+            select(Entry.id)
+            .where(Entry.user_id == user_id)
+            .order_by(Entry.created_at.desc())
+            .limit(10)
+        )).all()
+    if entry_id in last_ids:
+        return InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="🗑 Удалить", callback_data=f"entry:delete:{entry_id}"),
+            InlineKeyboardButton(text="✏️ Изменить", callback_data=f"entry:edit:{entry_id}")
+        ]])
+    return None
 
 # ================== Хендлеры ==================
 @r.message(CommandStart())
@@ -445,8 +479,6 @@ async def cur_del(cb: CallbackQuery, state: FSMContext):
 
     # >>> NEW: удалить из БД тоже
     async with await get_session() as session:
-        # простое удаление: перезальём весь список пользователя
-        from sqlalchemy import delete
         await session.execute(delete(Currency).where(Currency.user_id == cb.from_user.id, Currency.code.ilike(name)))
         await session.commit()
 
@@ -581,7 +613,6 @@ async def cat_manage_ops(cb: CallbackQuery, state: FSMContext):
 
         # >>> NEW: удалить из БД тоже
         async with await get_session() as session:
-            from sqlalchemy import delete
             await session.execute(delete(Category).where(
                 Category.user_id == cb.from_user.id, Category.mode == mode, Category.name.ilike(name)
             ))
@@ -614,6 +645,17 @@ async def submit(cb: CallbackQuery, state: FSMContext):
         await ensure_user(session, cb.from_user.id, cb.from_user.username)
         await add_entry(session, cb.from_user.id, st.mode, Decimal(st.amount_str.replace(",", ".")), st.currency, st.category, note=None)
 
+        # Определим id только что сохранённой записи (последняя по времени для пользователя)
+        entry_id = await session.scalar(
+            select(Entry.id)
+            .where(Entry.user_id == cb.from_user.id)
+            .order_by(Entry.created_at.desc())
+            .limit(1)
+        )
+
+    # Сформируем клавиатуру действий (только если запись в последних 10)
+    actions_kb = await build_entry_actions_kb(cb.from_user.id, entry_id) if entry_id else None
+
     m = MODE_META[st.mode]
     msg = (
         f"✅ Сохранено:\n\n"
@@ -622,8 +664,83 @@ async def submit(cb: CallbackQuery, state: FSMContext):
         "Начать заново: /start"
     )
     await state.clear()
-    await cb.message.edit_text(msg, reply_markup=None)
+    await cb.message.edit_text(msg, reply_markup=actions_kb, parse_mode="HTML")
     await cb.answer()
+
+# ====== NEW: Обработчики действий записи (Удалить / Изменить) ======
+
+@r.callback_query(F.data.startswith("entry:delete:"))
+async def entry_delete(cb: CallbackQuery):
+    try:
+        entry_id = int(cb.data.split(":")[2])
+    except Exception:
+        await cb.answer("Некорректный идентификатор", show_alert=True)
+        return
+
+    async with await get_session() as session:
+        entry = await session.get(Entry, entry_id)
+        if not entry or entry.user_id != cb.from_user.id:
+            await cb.answer("Запись не найдена или нет доступа", show_alert=True)
+            return
+        await session.delete(entry)
+        await session.commit()
+
+    # удаляем сообщение с записью
+    try:
+        await cb.message.delete()
+    except Exception:
+        await cb.message.edit_text("❌ Запись удалена", reply_markup=None)
+    await cb.answer("Удалено")
+
+@r.callback_query(F.data.startswith("entry:edit:"))
+async def entry_edit(cb: CallbackQuery, state: FSMContext):
+    try:
+        entry_id = int(cb.data.split(":")[2])
+    except Exception:
+        await cb.answer("Некорректный идентификатор", show_alert=True)
+        return
+
+    async with await get_session() as session:
+        # заберём запись
+        entry = await session.get(Entry, entry_id)
+        if not entry or entry.user_id != cb.from_user.id:
+            await cb.answer("Запись не найдена или нет доступа", show_alert=True)
+            return
+
+        # подготовим данные для формы ДО удаления
+        mode = entry.mode
+        amount_str = normalize_amount_input(entry.amount)  # <<< ВАЖНО: нормализуем для продолжения ввода
+        # подстрахуемся с валютой/категорией
+        currency_code = None
+        category_name = None
+        if entry.currency_id:
+            currency_code = await session.scalar(
+                select(Currency.code).where(Currency.id == entry.currency_id)
+            )
+        if entry.category_id:
+            category_name = await session.scalar(
+                select(Category.name).where(Category.id == entry.category_id)
+            )
+
+        # удалим старую запись (как и задумано — заменяем на новую)
+        await session.delete(entry)
+        await session.commit()
+
+    # восстановим редактор в том же сообщении
+    st = FormState(
+        mode=mode,
+        amount_str=amount_str,
+        currency=currency_code,
+        category=category_name,
+        tab="amount",
+    )
+    await state.set_state(Flow.form)
+    await state.update_data(st=st.__dict__)
+
+    msg = await cb.message.edit_text(render_card(st), reply_markup=kb_amount_tab(st), parse_mode="HTML")
+    st.main_msg_id = msg.message_id
+    await state.update_data(st=st.__dict__)
+    await cb.answer("Редактирование")
 
 # ================== Запуск ==================
 async def main():
