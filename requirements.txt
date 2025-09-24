@@ -1,0 +1,7 @@
+dotenv==0.9.9
+SQLAlchemy==2.0.43
+aiogram==3.22.0
+python-dotenv==1.1.1
+pandas==2.3.2
+numpy==2.3.3
+aiosqlite==0.21.0
