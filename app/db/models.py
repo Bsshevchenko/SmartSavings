@@ -1,7 +1,4 @@
-# app/db.py
-# -*- coding: utf-8 -*-
 from __future__ import annotations
-import os
 import enum
 from datetime import datetime, timezone
 
@@ -10,9 +7,6 @@ from sqlalchemy import (
     ForeignKey, UniqueConstraint, Index, CheckConstraint, event
 )
 from sqlalchemy.orm import declarative_base, relationship
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
-
-DB_URL = os.getenv("DB_URL", "sqlite+aiosqlite:///./data/app.db")
 
 Base = declarative_base()
 
@@ -83,37 +77,3 @@ class Entry(Base):
         CheckConstraint("mode in ('income','expense','asset')", name="ck_entry_mode"),
         Index("ix_entry_user_created_at", "user_id", "created_at"),
     )
-
-engine = create_async_engine(
-    DB_URL,
-    echo=False,
-    pool_pre_ping=True,
-    future=True,
-    connect_args={"check_same_thread": False} if DB_URL.startswith("sqlite+") else {},
-)
-
-SessionLocal: async_sessionmaker[AsyncSession] = async_sessionmaker(
-    engine, autoflush=False, expire_on_commit=False
-)
-
-# SQLite тюнинг: WAL + foreign_keys
-@event.listens_for(engine.sync_engine, "connect")
-def _sqlite_pragmas(dbapi_conn, connection_record):
-    if DB_URL.startswith("sqlite"):
-        cur = dbapi_conn.cursor()
-        cur.execute("PRAGMA journal_mode=WAL;")
-        cur.execute("PRAGMA synchronous=NORMAL;")
-        cur.execute("PRAGMA foreign_keys=ON;")
-        cur.close()
-
-async def init_db():
-    # создать папку, если надо
-    if DB_URL.startswith("sqlite+"):
-        path = DB_URL.split("///", 1)[-1]
-        d = os.path.dirname(path) or "."
-        os.makedirs(d, exist_ok=True)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-async def get_session() -> AsyncSession:
-    return SessionLocal()

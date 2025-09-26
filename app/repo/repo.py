@@ -1,5 +1,3 @@
-# app/repo.py
-# -*- coding: utf-8 -*-
 from __future__ import annotations
 from decimal import Decimal
 from typing import List, Optional
@@ -7,7 +5,7 @@ from typing import List, Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .db import User, Currency, Category, Entry
+from app.db.models import User, Currency, Category, Entry
 
 # users
 async def ensure_user(session: AsyncSession, user_id: int, username: Optional[str]) -> None:
@@ -91,7 +89,6 @@ async def add_entry(
 
 # snapshot для прогрева in-memory клавиатур
 async def get_user_prefs_snapshot(session: AsyncSession, user_id: int) -> dict:
-    from .repo import list_user_currencies, list_user_categories  # локальный импорт
     return {
         "currencies": await list_user_currencies(session, user_id),
         "categories": {
