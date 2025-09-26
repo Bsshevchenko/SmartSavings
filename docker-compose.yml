@@ -5,10 +5,9 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-    # База/файлы останутся на хосте
     volumes:
       - ./data:/app/data
     working_dir: /app
-    command: python -m app.bot
+    command: python -m app.main
     environment:
       - TZ=UTC

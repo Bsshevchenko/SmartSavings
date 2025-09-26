@@ -16,30 +16,18 @@ app/
 │
 ├─ routers/
 │   ├─ entries.py          # Роутер для ввода данных через TG клавиатуру
-│   └─ analytics.py        # Роуткр для аналитики (будущий модуль)
-│
-├─ services/
-│   ├─ entries.py          # Бизнес-логика: валидации, транзакции, доменные операции
-│   └─ prefs.py            # Работа с пользовательскими предпочтениями (валюты/категории)
+│   └─ analytics.py        # Роутер для аналитики (будущий модуль)
 │
 ├─ repo/                   # Тонкий слой доступа к БД (CRUD, SQLAlchemy)
 │   ├─ __init__.py
-│   ├─ users.py
-│   ├─ entries.py
-│   ├─ currencies.py
-│   └─ categories.py
+│   └─ repo.py
 │
 ├─ db/
 │   ├─ __init__.py         # init_db, get_session
 │   ├─ models.py           # User, Entry, Currency, Category
-│   └─ uow.py              # (опционально) UnitOfWork для транзакций
-│
-├─ schemas/                # Pydantic-DTO (на вход/выход сервисов и роутеров)
-│   └─ entries.py
 │
 └─ utils/
-    ├─ formatting.py       # fmt_money_str, parse_amount, normalize_amount_input
-    └─ pagination.py       # вспомогалки для постранички
+    └─ formatting.py       # Утилиты
 ```
 
 
