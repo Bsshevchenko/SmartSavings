@@ -4,6 +4,9 @@ from aiogram import Bot, Dispatcher
 from app.db import init_db
 from app.config import settings
 from app.routers.entries import r as entries_router
+from app.scheduler.scheduler import schedule_report_dispatch
+from app.routers.analytics.analytics_router import analytics_router
+from app.services.analytics.expense.expense_reports import build_report
 
 
 async def main() -> None:
@@ -25,6 +28,13 @@ async def main() -> None:
 
     # Регистрируем роутеры в нужном порядке
     dp.include_router(router=entries_router)
+    schedule_report_dispatch(
+        bot=bot,
+        report_fn=build_report,
+        cron="0 9 * * MON",  # Каждый понедельник в 09:00 по UTC
+        report_name="📊 Weekly expense report"
+    )
+    dp.include_router(router=analytics_router)
 
     await dp.start_polling(bot)
 
