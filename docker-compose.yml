@@ -1,13 +1,13 @@
 services:
   smart_savings_bot:
-    build: .
+    image: ghcr.io/bsshevchenko/smartsavings:${IMAGE_TAG:-latest}
     container_name: smart_savings_bot
     restart: unless-stopped
     env_file:
-      - .env
-    volumes:
-      - ./app/data:/app/data
+      - .env.app              # секреты приложения (токен, DB_URL и т.п.)
     working_dir: /app
     command: python -m app.main
+    volumes:
+      - ./app/data:/app/data:rw  # SQLite остаётся на хосте (как сейчас)
     environment:
       - TZ=UTC
