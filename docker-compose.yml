@@ -4,7 +4,7 @@ services:
     container_name: smart_savings_bot
     restart: unless-stopped
     env_file:
-      - .env.app              # секреты приложения (токен, DB_URL и т.п.)
+      - .env                     # секреты приложения (токен, DB_URL и т.п.)
     working_dir: /app
     command: python -m app.main
     volumes:
