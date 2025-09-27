@@ -73,7 +73,6 @@ jobs:
             set -euo pipefail
             echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u "${{ steps.meta.outputs.owner_lc }}" --password-stdin
             cd /home/SmartSavings
-            echo "IMAGE_TAG=${{ steps.meta.outputs.short_sha }}" > .env
-            docker compose pull
-            docker compose up -d --remove-orphans
+            IMAGE_TAG=${{ steps.meta.outputs.short_sha }} docker compose pull
+            IMAGE_TAG=${{ steps.meta.outputs.short_sha }} docker compose up -d --remove-orphans
             docker image prune -f
