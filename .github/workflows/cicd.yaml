@@ -67,7 +67,7 @@ jobs:
           port: ${{ secrets.SSH_PORT || 22 }}
           script: |
             set -euo pipefail
-            echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u "Bsshevchenko" --password-stdin
+            echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u "bsshevchenko" --password-stdin
 
             cd /home/SmartSavings
             echo "IMAGE_TAG=${{ steps.meta.outputs.short_sha }}" > .env
