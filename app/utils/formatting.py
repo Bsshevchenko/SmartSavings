@@ -1,7 +1,8 @@
 from aiogram import Bot
+from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from app.constants.constants import DEFAULT_CATEGORIES, BASE_CURRENCIES, USER_PREFS
-
+from app.constants.constants import RU_MONTHS
 
 def fmt_money_str(s: str) -> str:
     """Форматирование суммы для отображения в боте SmartSavings.
@@ -144,3 +145,7 @@ def normalize_amount_input(value) -> str:
         return s
     except Exception:
         return str(value)
+
+def format_ru_month_label(date: datetime) -> str:
+    """Формирует строку вида 'Октябрь 2025' на русском."""
+    return f"{RU_MONTHS[date.month]} {date.year}"
