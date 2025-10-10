@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import User, Currency, Category, Entry
+from app.services.capital_analytics import CapitalAnalyticsService
 
 # users
 async def ensure_user(session: AsyncSession, user_id: int, username: Optional[str]) -> None:
@@ -84,6 +85,14 @@ async def add_entry(
 
     entry = Entry(user_id=user_id, mode=mode, amount=amount, currency_id=cur.id, category_id=cat_id, note=note)
     session.add(entry)
+    await session.flush()  # Используем flush для получения ID
+    
+    # Если это актив, обновляем последние значения и сохраняем курсы
+    if mode == "asset":
+        analytics_service = CapitalAnalyticsService(session)
+        await analytics_service.update_latest_asset_value(user_id, currency_code, category_name, amount, entry.id)
+        await analytics_service.save_current_rates(currency_code)
+    
     await session.commit()
     return entry.id
 
