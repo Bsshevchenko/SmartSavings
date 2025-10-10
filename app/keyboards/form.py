@@ -16,7 +16,8 @@ def render_card(st: FormState) -> str:
         f"{m['icon']} {m['title']}\n\n"
         f"Сумма: <b>{fmt_money_str(st.amount_str)}</b>\n"
         f"Валюта: <b>{st.currency or '—'}</b>\n"
-        f"Категория: <b>{st.category or '—'}</b>\n\n"
+        f"Категория: <b>{st.category or '—'}</b>\n"
+        f"Описание: <b>{st.note or '—'}</b>\n\n"
         "Сначала введи сумму, затем выбери валюту и категорию. Можно переходить между вкладками."
     )
 
@@ -44,6 +45,8 @@ def kb_amount_tab(st: FormState) -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="🏷 Категория", callback_data="go:category"),
         InlineKeyboardButton(text="💱 Валюта", callback_data="go:currency"),
     )
+    note_text = "📝 Описание" if not st.note else "📝 Описание ✅"
+    kb.row(InlineKeyboardButton(text=note_text, callback_data="note:add"))
     kb.row(InlineKeyboardButton(text="✅ Подтвердить", callback_data="submit"))
     return kb.as_markup()
 
@@ -74,6 +77,8 @@ def kb_currency_tab(user_id: int, st: FormState) -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="⬅️ Сумма", callback_data="go:amount"),
         InlineKeyboardButton(text="🏷 Категория", callback_data=f"go:category"),
     )
+    note_text = "📝 Описание" if not st.note else "📝 Описание ✅"
+    kb.row(InlineKeyboardButton(text=note_text, callback_data="note:add"))
     kb.row(InlineKeyboardButton(text="✅ Подтвердить", callback_data="submit"))
     return kb.as_markup()
 
@@ -104,6 +109,8 @@ def kb_category_tab(user_id: int, st: FormState) -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="⬅️ Сумма", callback_data="go:amount"),
         InlineKeyboardButton(text="💱 Валюта", callback_data="go:currency"),
     )
+    note_text = "📝 Описание" if not st.note else "📝 Описание ✅"
+    kb.row(InlineKeyboardButton(text=note_text, callback_data="note:add"))
     kb.row(InlineKeyboardButton(text="✅ Подтвердить", callback_data="submit"))
     return kb.as_markup()
 

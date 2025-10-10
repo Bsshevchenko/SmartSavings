@@ -357,6 +357,107 @@ async def cat_manage_ops(cb: CallbackQuery, state: FSMContext):
         await cb.message.edit_reply_markup(reply_markup=kb_category_tab(cb.from_user.id, st))
         await cb.answer()
 
+# --- Описание ---
+@r.callback_query(Flow.form, F.data == "note:add")
+async def note_add_prompt(cb: CallbackQuery, state: FSMContext):
+    data = await state.get_data(); st = FormState(**data["st"])
+    
+    # Если уже есть описание, очищаем его
+    if st.note:
+        st.note = None
+        await state.update_data(st=st.__dict__)
+        
+        # Определяем текущую вкладку и обновляем соответствующую клавиатуру
+        if st.tab == "amount":
+            reply_markup = kb_amount_tab(st)
+        elif st.tab == "currency":
+            reply_markup = kb_currency_tab(cb.from_user.id, st)
+        elif st.tab == "category":
+            reply_markup = kb_category_tab(cb.from_user.id, st)
+        else:
+            reply_markup = kb_amount_tab(st)
+        
+        await cb.message.edit_text(render_card(st), reply_markup=reply_markup, parse_mode="HTML")
+        await cb.answer("Описание удалено")
+        return
+    
+    prompt = await cb.message.answer(
+        "Введи описание транзакции.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="✖️ Отмена ввода", callback_data="custom:cancel:note")
+        ]])
+    )
+    st.pending_kind = "note"
+    st.prompt_msg_id = prompt.message_id
+    await state.update_data(st=st.__dict__)
+    await state.set_state(Flow.add_note)
+    await cb.answer()
+
+# Отмена ввода описания
+@r.callback_query(Flow.add_note, F.data == "custom:cancel:note")
+async def note_add_cancel(cb: CallbackQuery, state: FSMContext):
+    data = await state.get_data(); st = FormState(**data["st"])
+    st.pending_kind = None
+    await state.update_data(st=st.__dict__)
+    await state.set_state(Flow.form)
+    await safe_delete(cb.bot, cb.message.chat.id, cb.message.message_id)
+    
+    # Определяем текущую вкладку и обновляем соответствующую клавиатуру
+    if st.tab == "amount":
+        reply_markup = kb_amount_tab(st)
+    elif st.tab == "currency":
+        reply_markup = kb_currency_tab(cb.from_user.id, st)
+    elif st.tab == "category":
+        reply_markup = kb_category_tab(cb.from_user.id, st)
+    else:
+        reply_markup = kb_amount_tab(st)
+    
+    await cb.bot.edit_message_text(
+        chat_id=cb.message.chat.id,
+        message_id=st.main_msg_id,
+        text=render_card(st),
+        reply_markup=reply_markup,
+        parse_mode="HTML"
+    )
+    await cb.answer("Отменено")
+
+# Блокирующий alert во время ожидания ввода описания
+@r.callback_query(Flow.add_note)
+async def lock_during_add_note(cb: CallbackQuery, state: FSMContext):
+    await cb.answer("Сначала введи описание в сообщении ниже или нажми «Отмена ввода».", show_alert=True)
+
+@r.message(Flow.add_note, F.text)
+async def note_add_save(m: Message, state: FSMContext):
+    text = m.text.strip()
+
+    data = await state.get_data(); st = FormState(**data["st"])
+    st.note = text
+    st.pending_kind = None
+    await state.update_data(st=st.__dict__)
+    await state.set_state(Flow.form)
+    
+    # Определяем текущую вкладку и обновляем соответствующую клавиатуру
+    if st.tab == "amount":
+        reply_markup = kb_amount_tab(st)
+    elif st.tab == "currency":
+        reply_markup = kb_currency_tab(m.from_user.id, st)
+    elif st.tab == "category":
+        reply_markup = kb_category_tab(m.from_user.id, st)
+    else:
+        reply_markup = kb_amount_tab(st)
+    
+    bot: Bot = m.bot
+    await bot.edit_message_text(
+        chat_id=m.chat.id,
+        message_id=st.main_msg_id,
+        text=render_card(st),
+        reply_markup=reply_markup,
+        parse_mode="HTML"
+    )
+    # удалить подсказку и сообщение пользователя
+    await safe_delete(bot, m.chat.id, st.prompt_msg_id)
+    await safe_delete(bot, m.chat.id, m.message_id)
+
 # --- Подтверждение ---
 @r.callback_query(Flow.form, F.data == "submit")
 async def submit(cb: CallbackQuery, state: FSMContext):
@@ -372,7 +473,7 @@ async def submit(cb: CallbackQuery, state: FSMContext):
     # >>> NEW: записать в БД
     async with await get_session() as session:
         await ensure_user(session, cb.from_user.id, cb.from_user.username)
-        await add_entry(session, cb.from_user.id, st.mode, Decimal(st.amount_str.replace(",", ".")), st.currency, st.category, note=None)
+        await add_entry(session, cb.from_user.id, st.mode, Decimal(st.amount_str.replace(",", ".")), st.currency, st.category, note=st.note)
 
         # Определим id только что сохранённой записи (последняя по времени для пользователя)
         entry_id = await session.scalar(
@@ -389,7 +490,8 @@ async def submit(cb: CallbackQuery, state: FSMContext):
     msg = (
         f"✅ Сохранено:\n\n"
         f"• {m['title']}: {fmt_money_str(st.amount_str)} {st.currency}\n"
-        f"• Категория: {st.category}\n\n"
+        f"• Категория: {st.category}\n"
+        f"• Описание: {st.note or '—'}\n\n"
         "Начать заново: /start"
     )
     await state.clear()
@@ -439,6 +541,7 @@ async def entry_edit(cb: CallbackQuery, state: FSMContext):
         # подготовим данные для формы ДО удаления
         mode = entry.mode
         amount_str = normalize_amount_input(entry.amount)  # <<< ВАЖНО: нормализуем для продолжения ввода
+        note = entry.note
         # подстрахуемся с валютой/категорией
         currency_code = None
         category_name = None
@@ -461,6 +564,7 @@ async def entry_edit(cb: CallbackQuery, state: FSMContext):
         amount_str=amount_str,
         currency=currency_code,
         category=category_name,
+        note=note,
         tab="amount",
     )
     await state.set_state(Flow.form)
