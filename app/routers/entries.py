@@ -513,6 +513,57 @@ async def entry_delete(cb: CallbackQuery):
         if not entry or entry.user_id != cb.from_user.id:
             await cb.answer("Запись не найдена или нет доступа", show_alert=True)
             return
+        
+        # Если удаляем актив, нужно обновить последние значения
+        if entry.mode == "asset":
+            from app.services.capital_analytics import CapitalAnalyticsService
+            analytics_service = CapitalAnalyticsService(session)
+            
+            # Получаем информацию о валюте и категории перед удалением
+            currency_result = await session.execute(
+                select(Currency.code).where(Currency.id == entry.currency_id)
+            )
+            currency_code = currency_result.scalar()
+            
+            category_result = await session.execute(
+                select(Category.name).where(Category.id == entry.category_id)
+            )
+            category_name = category_result.scalar()
+            
+            # Удаляем запись из AssetLatestValues если это была последняя запись по этой комбинации
+            if currency_code and category_name:
+                # Проверяем, есть ли другие записи по этой валюте + категории
+                other_entries_result = await session.execute(
+                    select(Entry)
+                    .where(Entry.user_id == entry.user_id)
+                    .where(Entry.mode == "asset")
+                    .where(Entry.currency_id == entry.currency_id)
+                    .where(Entry.category_id == entry.category_id)
+                    .where(Entry.id != entry_id)
+                    .order_by(Entry.created_at.desc())
+                )
+                other_entries = other_entries_result.scalars().all()
+                
+                if other_entries:
+                    # Если есть другие записи, обновляем на последнюю
+                    latest_entry = other_entries[0]
+                    await analytics_service.update_latest_asset_value(
+                        entry.user_id, currency_code, category_name, 
+                        latest_entry.amount, latest_entry.id
+                    )
+                else:
+                    # Если это была последняя запись, удаляем из AssetLatestValues
+                    from app.db.models import AssetLatestValues
+                    asset_value_result = await session.execute(
+                        select(AssetLatestValues)
+                        .where(AssetLatestValues.user_id == entry.user_id)
+                        .where(AssetLatestValues.currency_code == currency_code)
+                        .where(AssetLatestValues.category_name == category_name)
+                    )
+                    asset_value = asset_value_result.scalar_one_or_none()
+                    if asset_value:
+                        await session.delete(asset_value)
+        
         await session.delete(entry)
         await session.commit()
 

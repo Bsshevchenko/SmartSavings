@@ -4,7 +4,7 @@ from aiogram import Bot, Dispatcher
 from app.db import init_db
 from app.config import settings
 from app.routers.entries import r as entries_router
-from app.scheduler.scheduler import schedule_report_dispatch
+from app.scheduler.scheduler import schedule_report_dispatch, schedule_monthly_snapshots
 from app.routers.analytics.analytics_router import analytics_router
 from app.routers.analytics.expenses_router import expenses_router
 from app.routers.analytics.incomes_router import incomes_router
@@ -40,6 +40,10 @@ async def main() -> None:
         cron="0 9 * * MON",  # Каждый понедельник в 09:00 по UTC
         report_name="📊 Weekly expense report"
     )
+    
+    # Планируем автоматические снэпшоты капитала
+    schedule_monthly_snapshots()
+    
     dp.include_router(router=analytics_router)
 
     await dp.start_polling(bot)

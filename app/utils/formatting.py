@@ -27,6 +27,46 @@ def fmt_money_str(s: str) -> str:
         return s
 
 
+def fmt_crypto_str(s: str, currency: str = None) -> str:
+    """Форматирование криптовалют для отображения в боте SmartSavings.
+
+    Специальное форматирование для криптовалют с разным количеством знаков после запятой.
+
+    Args:
+        s (str): Строка с числовым значением.
+        currency (str): Код валюты для определения точности.
+
+    Returns:
+        str: Отформатированная строка для криптовалюты.
+    """
+    if not s:
+        return "—"
+    try:
+        v = Decimal(s.replace(",", "."))
+        
+        # Определяем количество знаков после запятой в зависимости от валюты
+        if currency == "BTC":
+            # BTC: до 5 знаков после запятой
+            txt = f"{v:,.5f}".replace(",", " ")
+            # Убираем лишние нули в конце
+            txt = txt.rstrip("0").rstrip(".")
+            return txt
+        elif currency in ["ETH", "SOL"]:
+            # ETH, SOL: до 3 знаков после запятой
+            txt = f"{v:,.3f}".replace(",", " ")
+            txt = txt.rstrip("0").rstrip(".")
+            return txt
+        elif currency in ["USDT", "USDC"]:
+            # Стейблкоины: до 2 знаков после запятой
+            txt = f"{v:,.2f}".replace(",", " ")
+            return txt[:-3] if txt.endswith(".00") else txt
+        else:
+            # Для других криптовалют используем стандартное форматирование
+            return fmt_money_str(s)
+    except Exception:
+        return s
+
+
 def parse_amount(s: str) -> Decimal | None:
     """Парсинг суммы, введённой пользователем в чат SmartSavings.
 
