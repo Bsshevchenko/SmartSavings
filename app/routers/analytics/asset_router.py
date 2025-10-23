@@ -6,7 +6,7 @@ from app.db import get_session
 from app.repo.entry_fetcher import EntryFetcher
 from app.utils.date_ranges import get_month_range
 from app.utils.reports import report_for_assets
-from app.utils.formatting import format_ru_month_label, fmt_money_str
+from app.utils.formatting import format_ru_month_label, fmt_money_str, fmt_crypto_str
 from app.services.capital_analytics import CapitalAnalyticsService
 
 asset_router = Router()
@@ -168,3 +168,92 @@ async def create_snapshot(message: Message):
             
         except Exception as e:
             await message.answer(f"❌ Ошибка при создании снэпшота: {str(e)}")
+
+
+@asset_router.message(F.text == "/list_assets")
+async def list_assets(message: Message):
+    """Обработчик команды /list_assets: показывает детальный список всех активов."""
+    
+    user_id = message.from_user.id
+    async with await get_session() as session:
+        try:
+            # Получаем все активы из asset_latest_values
+            from sqlalchemy import select
+            from app.db.models import AssetLatestValues
+            
+            result = await session.execute(
+                select(AssetLatestValues)
+                .where(AssetLatestValues.user_id == user_id)
+                .order_by(AssetLatestValues.currency_code, AssetLatestValues.category_name)
+            )
+            assets = result.scalars().all()
+            
+            if not assets:
+                await message.answer("📊 У вас пока нет активов.")
+                return
+            
+            # Группируем активы по валютам
+            assets_by_currency = {}
+            for asset in assets:
+                currency = asset.currency_code
+                if currency not in assets_by_currency:
+                    assets_by_currency[currency] = []
+                assets_by_currency[currency].append(asset)
+            
+            # Формируем красивое сообщение
+            text_parts = ["💼 **Детальный список активов:**\n"]
+            
+            total_usd = 0
+            total_rub = 0
+            
+            # Конвертер для расчета в USD и RUB
+            from app.utils.rates import CurrencyConverter
+            converter = CurrencyConverter()
+            await converter.update_fiat_rates()
+            await converter.update_crypto_rates()
+            
+            for currency, currency_assets in assets_by_currency.items():
+                # Название валюты жирным курсивом
+                text_parts.append(f"***{currency}:***")
+                
+                currency_total = 0
+                for asset in currency_assets:
+                    amount = float(asset.amount)
+                    currency_total += amount
+                    
+                    # Форматируем название категории без эмодзи
+                    category_name = asset.category_name or "Без категории"
+                    
+                    # Используем специальное форматирование для криптовалют
+                    if currency in ["BTC", "ETH", "SOL", "USDT", "USDC", "TRX"]:
+                        formatted_amount = fmt_crypto_str(str(amount), currency)
+                    else:
+                        formatted_amount = fmt_money_str(str(amount))
+                    text_parts.append(f"  {category_name}: {formatted_amount}")
+                
+                # Конвертируем в USD и RUB для общего итога
+                try:
+                    usd_value = await converter.convert(currency_total, currency, "USD")
+                    rub_value = await converter.convert(currency_total, currency, "RUB")
+                    total_usd += usd_value
+                    total_rub += rub_value
+                except Exception as e:
+                    print(f"Ошибка конвертации {currency}: {e}")
+                
+                text_parts.append("")
+            
+            # Добавляем общие итоги
+            text_parts.extend([
+                "📊 **Общие итоги:**",
+                f"• 🇺🇸 **USD:** {fmt_money_str(str(total_usd))}",
+                f"• 🇷🇺 **RUB:** {fmt_money_str(str(total_rub))}",
+                "",
+                f"📅 **Обновлено:** {assets[0].last_updated.strftime('%d.%m.%Y %H:%M') if assets else 'Неизвестно'}"
+            ])
+            
+            text = "\n".join(text_parts)
+            await message.answer(text, parse_mode="Markdown")
+            
+        except Exception as e:
+            print(f"ERROR in list_assets: {e}")
+            await message.answer(f"❌ Ошибка при получении списка активов: {str(e)}")

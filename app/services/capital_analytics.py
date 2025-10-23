@@ -198,13 +198,16 @@ class CapitalAnalyticsService:
         await self.converter.update_crypto_rates()
         return await self.converter.convert(1.0, currency_code, "USD")
     
-    async def create_monthly_snapshot(self, user_id: int, target_date: Optional[date] = None) -> None:
+    async def create_monthly_snapshot(self, user_id: int, target_date: Optional[date] = None) -> bool:
         """
         Создаёт снэпшот капитала на определённую дату.
         Рекомендуется запускать 15 числа каждого месяца.
+        
+        Returns:
+            bool: True если снэпшот создан успешно, False если уже существует
         """
         if target_date is None:
-            target_date = date.today().replace(day=15)
+            target_date = date.today()
         
         # Проверяем, нет ли уже снэпшота
         existing = await self.session.execute(
@@ -214,21 +217,27 @@ class CapitalAnalyticsService:
         )
         
         if existing.scalar_one_or_none():
-            return  # Снэпшот уже существует
+            return False  # Снэпшот уже существует
         
-        # Получаем капитал на указанную дату
-        capital_usd = await self.get_capital_for_date(user_id, target_date, "USD")
-        capital_rub = await self.get_capital_for_date(user_id, target_date, "RUB")
-        
-        # Сохраняем снэпшот
-        snapshot = CapitalSnapshot(
-            user_id=user_id,
-            snapshot_date=target_date,
-            total_usd=capital_usd,
-            total_rub=capital_rub
-        )
-        self.session.add(snapshot)
-        await self.session.commit()
+        try:
+            # Получаем капитал на указанную дату
+            capital_usd = await self.get_capital_for_date(user_id, target_date, "USD")
+            capital_rub = await self.get_capital_for_date(user_id, target_date, "RUB")
+            
+            # Сохраняем снэпшот
+            snapshot = CapitalSnapshot(
+                user_id=user_id,
+                snapshot_date=target_date,
+                total_usd=capital_usd,
+                total_rub=capital_rub
+            )
+            self.session.add(snapshot)
+            await self.session.commit()
+            return True
+        except Exception as e:
+            print(f"[ERROR] Failed to create snapshot: {e}")
+            await self.session.rollback()
+            return False
     
     async def get_capital_growth(self, user_id: int, start_date: date, end_date: date) -> Dict:
         """
