@@ -11,6 +11,16 @@ def report_for_expense(label: str, totals: dict) -> str:
     ])
 
 
+def report_for_income(label: str, totals: dict) -> str:
+    """Формирует текстовый отчёт о доходах для пользователя."""
+    return "\n".join([
+        f"💰 {label}:",
+        f"• 🇷🇺 {fmt_money_str(str(totals['RUB']))} RUB",
+        f"• 🇺🇸 {fmt_money_str(str(totals['USD']))} USD",
+        f"• 🇻🇳 {fmt_money_str(str(totals['VND']))} VND"
+    ])
+
+
 def report_for_assets(label: str, totals: dict) -> str:
     """Формирует текстовый отчёт о капитале для пользователя."""
     return "\n".join([
