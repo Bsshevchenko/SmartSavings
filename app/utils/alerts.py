@@ -2,7 +2,7 @@
 Утилиты для отправки алертов об ошибках в Telegram.
 
 Модуль предоставляет обработчик логов `TelegramAlertHandler`, который перехватывает
-сообщения уровня ERROR и выше и отправляет их в указанные чаты Telegram с помощью
+сообщения уровня WARNING и выше и отправляет их в указанные чаты Telegram с помощью
 отдельного бота для алертов. Для подключения достаточно вызвать `setup_alert_logging()`
 при старте приложения (например, в `app/main.py`).
 
@@ -25,14 +25,14 @@ from app.config import settings
 
 
 class TelegramAlertHandler(logging.Handler):
-    """Обработчик логов, отправляющий записи уровня ERROR+ в Telegram через отдельного бота.
+    """Обработчик логов, отправляющий записи уровня WARNING+ в Telegram через отдельного бота.
 
     Использует токен из переменной окружения `TELEGRAM_BOT_ALERT` и список чатов
     из `TELEGRAM_ALERT_CHAT_ID`. Если токен или список чатов не заданы, обработчик
     не выполняет отправку (no-op).
     """
 
-    def __init__(self, level: int = logging.ERROR) -> None:
+    def __init__(self, level: int = logging.WARNING) -> None:
         super().__init__(level=level)
         self._token: Optional[str] = settings.TELEGRAM_BOT_ALERT
         self._chat_ids: List[int] = self._parse_chat_ids(settings.TELEGRAM_ALERT_CHAT_ID)
@@ -82,11 +82,11 @@ class TelegramAlertHandler(logging.Handler):
 
 
 def setup_alert_logging() -> None:
-    """Подключает `TelegramAlertHandler` к корневому логгеру на уровне ERROR.
+    """Подключает `TelegramAlertHandler` к корневому логгеру на уровне WARNING.
 
     Функцию можно вызывать многократно — дубликаты обработчика не будут добавлены.
     """
-    handler = TelegramAlertHandler(level=logging.ERROR)
+    handler = TelegramAlertHandler(level=logging.WARNING)
     root = logging.getLogger()
 
     if not any(isinstance(h, TelegramAlertHandler) for h in root.handlers):
@@ -96,5 +96,5 @@ def setup_alert_logging() -> None:
         )
         handler.setFormatter(formatter)
         root.addHandler(handler)
-    if root.level > logging.ERROR:
-        root.setLevel(logging.ERROR)
+    if root.level > logging.WARNING:
+        root.setLevel(logging.WARNING)
