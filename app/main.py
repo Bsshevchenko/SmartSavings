@@ -5,7 +5,6 @@ from app.db import init_db
 from app.config import settings
 from app.routers.entries import r as entries_router
 from app.scheduler.scheduler import schedule_report_dispatch, schedule_monthly_snapshots
-from app.routers.analytics.analytics_router import analytics_router
 from app.routers.analytics.expenses_router import expenses_router
 from app.routers.analytics.incomes_router import incomes_router
 from app.services.analytics.expense.expense_reports import build_report
@@ -43,8 +42,6 @@ async def main() -> None:
     
     # Планируем автоматические снэпшоты капитала
     schedule_monthly_snapshots()
-    
-    dp.include_router(router=analytics_router)
 
     await dp.start_polling(bot)
 

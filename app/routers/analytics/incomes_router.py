@@ -5,7 +5,7 @@ from datetime import datetime
 from app.db import get_session
 from app.utils.reports import report_for_income
 from app.utils.date_ranges import get_this_month_range
-from app.repo.entry_fetcher import EntryFetcher
+from app.services.report_service import ReportService
 
 
 incomes_router = Router()
@@ -22,19 +22,16 @@ async def _send_income_report(message: Message, label: str, date_range: tuple[da
     user_id = message.from_user.id
     session = await get_session()
 
-    fetcher = EntryFetcher(session, user_id)
+    service = ReportService(session)
 
-    # 1. Загружаем данные
-    entries, currency_map = await fetcher.fetch_entries(date_range, mode="income")
+    # Получаем итоги за период
+    totals = await service.get_period_totals(user_id, date_range, "income", ["RUB", "USD", "VND"])
 
-    if not entries:
+    if not totals or all(value == 0 for value in totals.values()):
         await message.answer(f"💰 {label}: у вас не было доходов.")
         return
 
-    # 2. Считаем конвертированные итоги
-    totals = await fetcher.calculate_converted_totals(entries, currency_map)
-
-    # 3. Формируем и отправляем отчёт
+    # Формируем и отправляем отчёт
     text = report_for_income(label, totals)
     await message.answer(text)
 

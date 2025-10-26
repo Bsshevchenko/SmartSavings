@@ -516,8 +516,8 @@ async def entry_delete(cb: CallbackQuery):
         
         # Если удаляем актив, нужно обновить последние значения
         if entry.mode == "asset":
-            from app.services.capital_analytics import CapitalAnalyticsService
-            analytics_service = CapitalAnalyticsService(session)
+            from app.services.asset_service import AssetService
+            analytics_service = AssetService(session)
             
             # Получаем информацию о валюте и категории перед удалением
             currency_result = await session.execute(
