@@ -54,7 +54,7 @@ async def create_monthly_snapshots():
         session = await get_session()
         
         # Импортируем сервис аналитики капитала
-        from app.services.capital_analytics import CapitalAnalyticsService
+        from app.services.asset_service import AssetService
         from app.db.models import AssetLatestValues
         from sqlalchemy import select
         
@@ -68,7 +68,7 @@ async def create_monthly_snapshots():
             print("[INFO] No users with assets found for monthly snapshots")
             return
         
-        analytics_service = CapitalAnalyticsService(session)
+        analytics_service = AssetService(session)
         created_count = 0
         
         for user_id in user_ids:
