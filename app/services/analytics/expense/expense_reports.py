@@ -1,5 +1,6 @@
 from sqlalchemy import select
 from datetime import datetime, timedelta, timezone
+import logging
 
 from app.db.models import User, Entry, Currency
 from app.utils.rates import CurrencyConverter
@@ -51,8 +52,8 @@ async def build_report(user_id: int, session) -> str:
             try:
                 converted = await converter.convert(float(entry.amount), currency, target)
                 totals[target] += converted
-            except Exception as e:
-                print(f"[ERROR] Failed to convert {entry.amount} {currency} to {target}: {e}")
+            except Exception:
+                logging.exception(f"Failed to convert {entry.amount} {currency} to {target}")
                 continue
 
     return "\n".join([
