@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Tuple
+import logging
 
 from app.services.asset_service import AssetService
 from app.utils.rates import CurrencyConverter
@@ -39,7 +40,7 @@ async def compute_totals_usd_rub(assets_by_currency: dict) -> Tuple[float, float
             rub_value = await converter.convert(currency_total, currency, "RUB")
             total_usd += usd_value
             total_rub += rub_value
-        except Exception as e:
-            print(f"Ошибка конвертации {currency}: {e}")
+        except Exception:
+            logging.exception(f"Ошибка конвертации {currency}")
 
     return total_usd, total_rub, last_updated

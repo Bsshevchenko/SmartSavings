@@ -1,4 +1,5 @@
 import httpx
+import logging
 from typing import Literal
 from datetime import datetime, timedelta
 
@@ -82,9 +83,10 @@ class CurrencyConverter:
             # Если API недоступен, используем кэшированные данные или fallback
             if _rates_cache["fiat"]["data"]:
                 self._fiat_rates = _rates_cache["fiat"]["data"]
+                logging.warning(f"[RATES][FIAT] API error, using cached fiat rates: {e}")
             else:
                 self._fiat_rates = FALLBACK_RATES["fiat"]
-                print(f"Warning: Using fallback fiat rates due to API error: {e}")
+                logging.exception("[RATES][FIAT] API error, using fallback fiat rates")
 
     async def update_crypto_rates(self, cryptos: list[CryptoCurrency] = None) -> None:
         # Проверяем кэш
@@ -128,9 +130,10 @@ class CurrencyConverter:
             # Если API недоступен, используем кэшированные данные или fallback
             if _rates_cache["crypto"]["data"]:
                 self._crypto_rates_usd = _rates_cache["crypto"]["data"]
+                logging.warning(f"[RATES][CRYPTO] API error, using cached crypto rates: {e}")
             else:
                 self._crypto_rates_usd = FALLBACK_RATES["crypto"]
-                print(f"Warning: Using fallback crypto rates due to API error: {e}")
+                logging.exception("[RATES][CRYPTO] API error, using fallback crypto rates")
 
     async def convert(self, amount: float, from_currency: str, to_currency: str) -> float:
         """
