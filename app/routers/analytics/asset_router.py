@@ -1,5 +1,6 @@
 from aiogram import Router, F
 from aiogram.types import Message
+import logging
 from datetime import datetime, timedelta, timezone
 
 from app.db import get_session
@@ -35,9 +36,9 @@ async def get_asset(message: Message):
             
             await message.answer(report_for_assets(label="Текущий капитал", totals=capital))
             
-        except Exception as e:
-            print(f"ERROR in get_asset: {e}")
-            await message.answer(f"❌ Ошибка при расчёте капитала: {str(e)}")
+        except Exception:
+            logging.exception("ERROR in get_asset")
+            await message.answer(f"❌ Ошибка при расчёте капитала")
 
 
 @asset_router.message(F.text == "/grow_asset")
@@ -62,8 +63,9 @@ async def grow_asset(message: Message):
             text = report_asset_growth(prev_date, current_date, prev_capital, current_capital)
             await message.answer(text)
 
-        except Exception as e:
-            await message.answer(f"❌ Ошибка при расчёте роста капитала: {str(e)}")
+        except Exception:
+            logging.exception("ERROR in grow_asset")
+            await message.answer(f"❌ Ошибка при расчёте роста капитала")
 
 
 @asset_router.message(F.text == "/snapshot_asset")
@@ -85,8 +87,9 @@ async def create_snapshot(message: Message):
             text = report_asset_snapshot_created(capital)
             await message.answer(text)
 
-        except Exception as e:
-            await message.answer(f"❌ Ошибка при создании снэпшота: {str(e)}")
+        except Exception:
+            logging.exception("ERROR in create_snapshot")
+            await message.answer(f"❌ Ошибка при создании снэпшота")
 
 
 @asset_router.message(F.text == "/list_assets")
@@ -107,6 +110,6 @@ async def list_assets(message: Message):
             text = report_assets_detailed_list(assets_by_currency, total_usd, total_rub, updated_at)
             await message.answer(text, parse_mode="Markdown")
             
-        except Exception as e:
-            print(f"ERROR in list_assets: {e}")
-            await message.answer(f"❌ Ошибка при получении списка активов: {str(e)}")
+        except Exception:
+            logging.exception("ERROR in list_assets")
+            await message.answer(f"❌ Ошибка при получении списка активов")

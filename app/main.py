@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from aiogram import Bot, Dispatcher
 
 from app.db import init_db
@@ -9,6 +10,7 @@ from app.routers.analytics.expenses_router import expenses_router
 from app.routers.analytics.incomes_router import incomes_router
 from app.services.analytics.expense.expense_reports import build_report
 from app.routers.analytics.asset_router import asset_router
+from app.utils.alerts import setup_alert_logging
 
 
 async def main() -> None:
@@ -24,6 +26,9 @@ async def main() -> None:
     Эта функция вызывается при запуске проекта, когда скрипт
     запускается напрямую (`python main.py`).
     """
+    # Включаем алерты в Telegram для ошибок
+    setup_alert_logging()
+
     await init_db()
     bot = Bot(token=settings.TELEGRAM_BOT_TOKEN)
     dp = Dispatcher()
@@ -43,7 +48,11 @@ async def main() -> None:
     # Планируем автоматические снэпшоты капитала
     schedule_monthly_snapshots()
 
-    await dp.start_polling(bot)
+    try:
+        await dp.start_polling(bot)
+    except Exception:
+        logging.exception("Bot polling crashed")
+        raise
 
 if __name__ == "__main__":
     asyncio.run(main())

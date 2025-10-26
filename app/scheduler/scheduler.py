@@ -1,4 +1,5 @@
 import aiocron
+import logging
 from aiogram import Bot
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,9 +37,9 @@ def schedule_report_dispatch(
                     report = await report_fn(user_id, session)
                     await bot.send_message(chat_id=user_id, text=report)
                 except Exception as e:
-                    print(f"[ERROR] Failed to send {report_name} to user {user_id}: {e}")
+                    logging.exception(f"Failed to send {report_name} to user {user_id}")
         except Exception as e:
-            print(f"[ERROR] Report dispatch '{report_name}' failed: {e}")
+            logging.exception(f"Report dispatch '{report_name}' failed")
         finally:
             if session:
                 await session.close()
@@ -65,7 +66,7 @@ async def create_monthly_snapshots():
         user_ids = [row[0] for row in users_result.fetchall()]
         
         if not user_ids:
-            print("[INFO] No users with assets found for monthly snapshots")
+            logging.info("No users with assets found for monthly snapshots")
             return
         
         analytics_service = AssetService(session)
@@ -77,16 +78,16 @@ async def create_monthly_snapshots():
                 success = await analytics_service.create_monthly_snapshot(user_id)
                 if success:
                     created_count += 1
-                    print(f"[INFO] Created monthly snapshot for user {user_id}")
+                    logging.info(f"Created monthly snapshot for user {user_id}")
                 else:
-                    print(f"[WARNING] Failed to create snapshot for user {user_id}")
+                    logging.warning(f"Failed to create snapshot for user {user_id}")
             except Exception as e:
-                print(f"[ERROR] Failed to create snapshot for user {user_id}: {e}")
+                logging.exception(f"Failed to create snapshot for user {user_id}")
         
-        print(f"[INFO] Monthly snapshots completed: {created_count}/{len(user_ids)} users")
+        logging.info(f"Monthly snapshots completed: {created_count}/{len(user_ids)} users")
         
     except Exception as e:
-        print(f"[ERROR] Monthly snapshots task failed: {e}")
+        logging.exception("Monthly snapshots task failed")
     finally:
         if session:
             await session.close()
@@ -100,4 +101,4 @@ def schedule_monthly_snapshots():
     async def monthly_snapshots_task():
         await create_monthly_snapshots()
     
-    print("[INFO] Monthly snapshots scheduled for 15th of each month at 10:00")
+    logging.info("Monthly snapshots scheduled for 15th of each month at 10:00")
