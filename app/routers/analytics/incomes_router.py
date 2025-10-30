@@ -20,20 +20,19 @@ async def _send_income_report(message: Message, label: str, date_range: tuple[da
     :param date_range: Диапазон дат (start, end).
     """
     user_id = message.from_user.id
-    session = await get_session()
+    async with await get_session() as session:
+        service = ReportService(session)
 
-    service = ReportService(session)
+        # Получаем итоги за период
+        totals = await service.get_period_totals(user_id, date_range, "income", ["RUB", "USD", "VND"])
 
-    # Получаем итоги за период
-    totals = await service.get_period_totals(user_id, date_range, "income", ["RUB", "USD", "VND"])
+        if not totals or all(value == 0 for value in totals.values()):
+            await message.answer(f"💰 {label}: у вас не было доходов.")
+            return
 
-    if not totals or all(value == 0 for value in totals.values()):
-        await message.answer(f"💰 {label}: у вас не было доходов.")
-        return
-
-    # Формируем и отправляем отчёт
-    text = report_for_income(label, totals)
-    await message.answer(text)
+        # Формируем и отправляем отчёт
+        text = report_for_income(label, totals)
+        await message.answer(text)
 
 
 @incomes_router.message(F.text == "/get_incomes")
