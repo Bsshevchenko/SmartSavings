@@ -106,9 +106,20 @@ async def list_assets(message: Message):
                 await message.answer("📊 У вас пока нет активов.")
                 return
 
+            # Определяем нераспознанные валюты: пробуем сконвертировать 1 ед. в USD
+            unknown_currencies: set[str] = set()
+            converter = AssetService(session).converter
+            await converter.update_fiat_rates()
+            await converter.update_crypto_rates()
+            for cur in assets_by_currency.keys():
+                try:
+                    _ = await converter.convert(1.0, cur, "USD")
+                except Exception:
+                    unknown_currencies.add(cur)
+
             total_usd, total_rub, updated_at = await compute_totals_usd_rub(assets_by_currency)
-            text = report_assets_detailed_list(assets_by_currency, total_usd, total_rub, updated_at)
-            await message.answer(text, parse_mode="Markdown")
+            text = report_assets_detailed_list(assets_by_currency, total_usd, total_rub, updated_at, unknown_currencies)
+            await message.answer(text, parse_mode="HTML")
             
         except Exception:
             logging.exception("ERROR in list_assets")

@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models import (
     Entry, Currency, Category, CapitalSnapshot, CurrencyRate, AssetLatestValues, User
 )
-from app.utils.rates import CurrencyConverter
+from app.services.rates.converter import CurrencyConverter
 
 logger = logging.getLogger(__name__)
 

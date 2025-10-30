@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 import logging
 
 from app.db.models import User, Entry, Currency
-from app.utils.rates import CurrencyConverter
+from app.services.rates.converter import CurrencyConverter
 
 
 async def get_last_week_range() -> tuple[datetime, datetime]:
