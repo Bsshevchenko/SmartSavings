@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Entry, Currency
-from app.utils.rates import CurrencyConverter
+from app.services.rates import CurrencyConverter
 
 logger = logging.getLogger(__name__)
 

@@ -3,7 +3,7 @@ from typing import Dict, Tuple
 import logging
 
 from app.services.asset_service import AssetService
-from app.utils.rates import CurrencyConverter
+from app.services.rates import CurrencyConverter
 
 
 async def get_growth_data(service: AssetService, user_id: int) -> Tuple[datetime, datetime, Dict[str, float], Dict[str, float]]:

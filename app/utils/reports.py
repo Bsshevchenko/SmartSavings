@@ -73,13 +73,15 @@ def report_asset_snapshot_created(capital: dict) -> str:
     ])
 
 
-def report_assets_detailed_list(assets_by_currency: dict, total_usd: float, total_rub: float, updated_at) -> str:
+def report_assets_detailed_list(assets_by_currency: dict, total_usd: float, total_rub: float, updated_at, unknown_currencies: set[str] | None = None) -> str:
     """Формирует детальный список активов и общие итоги.
 
     assets_by_currency: { currency: [AssetLatestValues, ...] }
     updated_at: datetime | str | None
     """
     parts = ["💼 **Детальный список активов:**\n"]
+
+    unknown_currencies = unknown_currencies or set()
 
     for currency, currency_assets in assets_by_currency.items():
         parts.append(f"***{currency}:***")
@@ -90,7 +92,8 @@ def report_assets_detailed_list(assets_by_currency: dict, total_usd: float, tota
                 formatted_amount = fmt_crypto_str(str(amount), currency)
             else:
                 formatted_amount = fmt_money_str(str(amount))
-            parts.append(f"  {category_name}: {formatted_amount}")
+            suffix = " (валюта не распознана)" if currency in unknown_currencies else ""
+            parts.append(f"  {category_name}: {formatted_amount}{suffix}")
         parts.append("")
 
     parts.extend([
