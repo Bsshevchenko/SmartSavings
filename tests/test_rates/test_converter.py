@@ -1,4 +1,4 @@
-from app.services.rates import CurrencyConverter
+from app.services.rates.converter import CurrencyConverter
 import asyncio
 import pytest
 

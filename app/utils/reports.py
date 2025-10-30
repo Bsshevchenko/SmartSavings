@@ -76,32 +76,55 @@ def report_asset_snapshot_created(capital: dict) -> str:
 def report_assets_detailed_list(assets_by_currency: dict, total_usd: float, total_rub: float, updated_at, unknown_currencies: set[str] | None = None) -> str:
     """Формирует детальный список активов и общие итоги.
 
+    Визуально группирует по категориям, внутри выводит позиции как "<amount> <currency>".
     assets_by_currency: { currency: [AssetLatestValues, ...] }
     updated_at: datetime | str | None
     """
-    parts = ["💼 **Детальный список активов:**\n"]
+    parts = ["💼 <b>Детальный список активов:</b>\n"]
 
     unknown_currencies = unknown_currencies or set()
 
+    # Перегруппируем: категория -> [(amount, currency_code)]
+    categories: dict[str, list[tuple[float, str]]] = {}
     for currency, currency_assets in assets_by_currency.items():
-        parts.append(f"***{currency}:***")
         for asset in currency_assets:
-            amount = float(asset.amount)
-            category_name = asset.category_name or "Без категории"
+            category = asset.category_name or "Без категории"
+            categories.setdefault(category, []).append((float(asset.amount), currency))
+
+    # Приоритетный порядок вывода категорий, остальные по алфавиту
+    preferred = ["Акции", "Вклад", "Инвесткопилка", "Крипта"]
+    ordered_categories = [c for c in preferred if c in categories] + sorted(
+        [c for c in categories.keys() if c not in preferred]
+    )
+
+    icon_by_category = {
+        "акции": "📈",
+        "вклад": "🏦",
+        "инвесткопилка": "💰",
+        "крипта": "🪙",
+        "кэш": "💵",
+    }
+
+    for category in ordered_categories:
+        icon = icon_by_category.get(category.strip().lower(), "🗂️")
+        parts.append(f"{icon} <b>{category}:</b>")
+        for amount, currency in categories[category]:
+            # Форматируем сумму: для криптовалют используем спец-формат, иначе денежный
             if currency in ["BTC", "ETH", "SOL", "USDT", "USDC", "TRX"]:
-                formatted_amount = fmt_crypto_str(str(amount), currency)
+                amt_str = fmt_crypto_str(str(amount), currency)
             else:
-                formatted_amount = fmt_money_str(str(amount))
+                amt_str = fmt_money_str(str(amount))
+
             suffix = " (валюта не распознана)" if currency in unknown_currencies else ""
-            parts.append(f"  {category_name}: {formatted_amount}{suffix}")
+            parts.append(f"  {amt_str} {currency}{suffix}")
         parts.append("")
 
     parts.extend([
-        "📊 **Общие итоги:**",
-        f"• 🇺🇸 **USD:** {fmt_money_str(str(total_usd))}",
-        f"• 🇷🇺 **RUB:** {fmt_money_str(str(total_rub))}",
+        "📊 <b>Общие итоги:</b>",
+        f"• 🇺🇸 <b>USD:</b> {fmt_money_str(str(total_usd))}",
+        f"• 🇷🇺 <b>RUB:</b> {fmt_money_str(str(total_rub))}",
         "",
-        f"📅 **Обновлено:** {updated_at.strftime('%d.%m.%Y %H:%M') if hasattr(updated_at, 'strftime') else (updated_at or 'Неизвестно')}",
+        f"📅 <b>Обновлено:</b> {updated_at.strftime('%d.%m.%Y %H:%M') if hasattr(updated_at, 'strftime') else (updated_at or 'Неизвестно')}",
     ])
 
     return "\n".join(parts)

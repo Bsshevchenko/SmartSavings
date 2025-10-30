@@ -119,7 +119,7 @@ async def list_assets(message: Message):
 
             total_usd, total_rub, updated_at = await compute_totals_usd_rub(assets_by_currency)
             text = report_assets_detailed_list(assets_by_currency, total_usd, total_rub, updated_at, unknown_currencies)
-            await message.answer(text, parse_mode="Markdown")
+            await message.answer(text, parse_mode="HTML")
             
         except Exception:
             logging.exception("ERROR in list_assets")

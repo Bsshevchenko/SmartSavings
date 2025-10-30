@@ -57,4 +57,4 @@ if __name__ == "__main__":
     import asyncio
     print(asyncio.run(get_fiat_price_usd("VND")))
     print(asyncio.run(get_crypto_price_usd("BTC")))
-    print(asyncio.run(get_stock_price_usd("SBER")))
+    print(asyncio.run(get_stock_price_usd("YDEX")))
