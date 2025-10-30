@@ -20,20 +20,19 @@ async def _send_expense_report(message: Message, label: str, date_range: tuple[d
     :param date_range: Диапазон дат (start, end).
     """
     user_id = message.from_user.id
-    session = await get_session()
+    async with await get_session() as session:
+        service = ReportService(session)
 
-    service = ReportService(session)
+        # Получаем итоги за период
+        totals = await service.get_period_totals(user_id, date_range, "expense", ["RUB", "USD", "VND"])
 
-    # Получаем итоги за период
-    totals = await service.get_period_totals(user_id, date_range, "expense", ["RUB", "USD", "VND"])
+        if not totals or all(value == 0 for value in totals.values()):
+            await message.answer(f"📊 {label}: у вас не было расходов.")
+            return
 
-    if not totals or all(value == 0 for value in totals.values()):
-        await message.answer(f"📊 {label}: у вас не было расходов.")
-        return
-
-    # Формируем и отправляем отчёт
-    text = report_for_expense(label, totals)
-    await message.answer(text)
+        # Формируем и отправляем отчёт
+        text = report_for_expense(label, totals)
+        await message.answer(text)
 
 
 @expenses_router.message(F.text == "/expenses_today")
