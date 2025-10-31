@@ -7,7 +7,7 @@ class FormState:
     main_msg_id: int | None = None
     prompt_msg_id: int | None = None
     pending_kind: str | None = None       # 'cur' | 'cat' | 'note' | None
-    mode: str = "income"                  # income | expense | asset
+    mode: str = "expense"                  # income | expense | asset
     amount_str: str = ""
     currency: str | None = None
     category: str | None = None

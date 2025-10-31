@@ -1,4 +1,5 @@
 from decimal import Decimal
+from datetime import datetime, timezone
 from aiogram import Router, F, Bot
 from sqlalchemy import select, delete
 from aiogram.filters import CommandStart
@@ -10,12 +11,13 @@ from app.db.models import Currency, Category, Entry
 from app.states.form import FormState, Flow
 from app.keyboards.form import render_card, kb_amount_tab, kb_currency_tab, kb_category_tab, kb_manage_list, \
     build_entry_actions_kb
-from app.constants.constants import USER_PREFS, MODE_META
+from app.constants.constants import USER_PREFS, MODE_META, BASE_CURRENCIES, DEFAULT_CATEGORIES
 from app.repo.repo import (
     ensure_user, get_user_prefs_snapshot, add_custom_currency,
-    add_custom_category, add_entry, list_user_currencies, list_user_categories
+    add_custom_category, add_entry, list_user_currencies, list_user_categories,
+    update_currency_last_used, update_category_last_used
 )
-from app.utils.formatting import safe_delete, parse_amount, fmt_money_str, normalize_amount_input
+from app.utils.formatting import safe_delete, parse_amount, fmt_money_str, normalize_amount_input, uniq_push_front
 
 r = Router()
 
@@ -122,6 +124,28 @@ async def cur_set(cb: CallbackQuery, state: FSMContext):
     cur = cb.data.split(":",2)[2]
     data = await state.get_data(); st = FormState(**data["st"])
     st.currency = cur
+    
+    # >>> Переместить выбранную валюту в начало списка в памяти (быстро, без БД)
+    prefs = USER_PREFS[cb.from_user.id]["currencies"]
+    uniq_push_front(prefs, cur)
+    
+    # >>> Обновить last_used_at в БД асинхронно (не блокируем UI)
+    # Используем один запрос вместо множественных
+    async with await get_session() as session:
+        # Получаем объект и обновляем за один раз
+        currency_obj = (await session.execute(
+            select(Currency).where(Currency.user_id == cb.from_user.id, Currency.code.ilike(cur))
+        )).scalar_one_or_none()
+        
+        if currency_obj is None:
+            # Создаем новую валюту
+            currency_obj = Currency(user_id=cb.from_user.id, code=cur, last_used_at=datetime.now(timezone.utc))
+            session.add(currency_obj)
+        else:
+            # Обновляем время последнего использования
+            currency_obj.last_used_at = datetime.now(timezone.utc)
+        await session.commit()
+    
     await state.update_data(st=st.__dict__)
     st.tab = "category"; st.cat_page = 0
     await state.update_data(st=st.__dict__)
@@ -247,6 +271,28 @@ async def cat_set(cb: CallbackQuery, state: FSMContext):
     if mode != st.mode:
         await cb.answer(); return
     st.category = cat
+    
+    # >>> переместить выбранную категорию в начало списка в памяти (быстро, без БД)
+    prefs = USER_PREFS[cb.from_user.id]["categories"][mode]
+    uniq_push_front(prefs, cat)
+    
+    # >>> обновить last_used_at в БД асинхронно (не блокируем UI)
+    # Используем один запрос вместо множественных
+    async with await get_session() as session:
+        # Получаем объект и обновляем за один раз
+        category_obj = (await session.execute(
+            select(Category).where(Category.user_id == cb.from_user.id, Category.mode == mode, Category.name.ilike(cat))
+        )).scalar_one_or_none()
+        
+        if category_obj is None:
+            # Создаем новую категорию
+            category_obj = Category(user_id=cb.from_user.id, mode=mode, name=cat, last_used_at=datetime.now(timezone.utc))
+            session.add(category_obj)
+        else:
+            # Обновляем время последнего использования
+            category_obj.last_used_at = datetime.now(timezone.utc)
+        await session.commit()
+    
     await state.update_data(st=st.__dict__)
     await cb.message.edit_text(render_card(st), reply_markup=kb_category_tab(cb.from_user.id, st), parse_mode="HTML")
     await cb.answer(f"Категория: {cat}")

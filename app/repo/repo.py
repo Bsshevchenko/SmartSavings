@@ -1,8 +1,9 @@
 from __future__ import annotations
 from decimal import Decimal
+from datetime import datetime, timezone
 from typing import List, Optional
 
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import User, Currency, Category, Entry
@@ -30,10 +31,25 @@ async def add_custom_currency(session: AsyncSession, user_id: int, code: str) ->
         await session.commit()
 
 async def list_user_currencies(session: AsyncSession, user_id: int) -> List[str]:
+    # Сортируем по last_used_at DESC (последние использованные сначала), затем по id DESC
     rows = (await session.execute(
-        select(Currency.code).where(Currency.user_id == user_id).order_by(Currency.id.desc())
+        select(Currency.code)
+        .where(Currency.user_id == user_id)
+        .order_by(
+            Currency.last_used_at.desc().nulls_last(),
+            Currency.id.desc()
+        )
     )).scalars().all()
     return rows
+
+async def update_currency_last_used(session: AsyncSession, user_id: int, code: str) -> None:
+    """Обновляет время последнего использования валюты."""
+    cur = (await session.execute(
+        select(Currency).where(Currency.user_id == user_id, Currency.code.ilike(code))
+    )).scalar_one_or_none()
+    if cur:
+        cur.last_used_at = datetime.now(timezone.utc)
+        await session.flush()
 
 # categories
 async def add_custom_category(session: AsyncSession, user_id: int, mode: str, name: str) -> None:
@@ -48,10 +64,25 @@ async def add_custom_category(session: AsyncSession, user_id: int, mode: str, na
         await session.commit()
 
 async def list_user_categories(session: AsyncSession, user_id: int, mode: str) -> List[str]:
+    # Сортируем по last_used_at DESC (последние использованные сначала), затем по id DESC
     rows = (await session.execute(
-        select(Category.name).where(Category.user_id == user_id, Category.mode == mode).order_by(Category.id.desc())
+        select(Category.name)
+        .where(Category.user_id == user_id, Category.mode == mode)
+        .order_by(
+            Category.last_used_at.desc().nulls_last(),
+            Category.id.desc()
+        )
     )).scalars().all()
     return rows
+
+async def update_category_last_used(session: AsyncSession, user_id: int, mode: str, name: str) -> None:
+    """Обновляет время последнего использования категории."""
+    cat = (await session.execute(
+        select(Category).where(Category.user_id == user_id, Category.mode == mode, Category.name.ilike(name))
+    )).scalar_one_or_none()
+    if cat:
+        cat.last_used_at = datetime.now(timezone.utc)
+        await session.flush()
 
 # entries
 async def add_entry(
@@ -86,6 +117,11 @@ async def add_entry(
     entry = Entry(user_id=user_id, mode=mode, amount=amount, currency_id=cur.id, category_id=cat_id, note=note)
     session.add(entry)
     await session.flush()  # Используем flush для получения ID
+    
+    # Обновляем last_used_at для валюты и категории при сохранении записи
+    cur.last_used_at = datetime.now(timezone.utc)
+    if cat:
+        cat.last_used_at = datetime.now(timezone.utc)
     
     # Если это актив, обновляем последние значения и сохраняем курсы
     if mode == "asset":
