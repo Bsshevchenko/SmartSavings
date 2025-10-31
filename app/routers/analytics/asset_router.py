@@ -2,6 +2,7 @@ from aiogram import Router, F
 from aiogram.types import Message
 import logging
 from datetime import datetime, timedelta, timezone
+from sqlalchemy import text
 
 from app.db import get_session
 from app.utils.reports import (
@@ -26,8 +27,15 @@ async def get_asset(message: Message):
     
     async with await get_session() as session:
         try:
+            # Принудительно синхронизируемся с БД для SQLite WAL режима
+            if hasattr(session.bind, 'sync_engine') and 'sqlite' in str(session.bind.url):
+                await session.execute(text("SELECT 1"))  # Принудительная синхронизация с WAL
+            
             service = AssetService(session)
             capital = await service.get_current_capital(user_id, ["RUB", "USD"])
+            
+            # Логируем для диагностики
+            logging.info(f"get_asset for user {user_id}: capital = {capital}")
             
             # Проверяем, есть ли активы
             if all(value == 0 for value in capital.values()):

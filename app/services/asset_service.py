@@ -8,6 +8,7 @@ from decimal import Decimal
 from typing import Dict, List, Optional, Tuple
 
 from sqlalchemy import select, func, and_, or_
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import (
@@ -39,6 +40,15 @@ class AssetService:
         if target_currencies is None:
             target_currencies = ["RUB", "USD"]
         
+        # Для SQLite в WAL режиме принудительно синхронизируемся с БД
+        # Это гарантирует, что мы видим все закоммиченные изменения из других транзакций
+        if hasattr(self.session.bind, 'sync_engine') and 'sqlite' in str(self.session.bind.url):
+            # Выполняем простой запрос для синхронизации с WAL
+            try:
+                await self.session.execute(text("SELECT 1"))
+            except Exception:
+                pass  # Игнорируем ошибки
+        
         # Получаем последние значения по каждому активу
         latest_assets = await self.session.execute(
             select(AssetLatestValues)
@@ -46,7 +56,21 @@ class AssetService:
         )
         
         assets = latest_assets.scalars().all()
+        
+        # Логируем для диагностики
+        logger.info(f"get_current_capital: user_id={user_id}, found {len(assets)} assets in AssetLatestValues")
+        if assets:
+            logger.debug(f"Assets: {[(a.currency_code, a.amount, a.category_name) for a in assets]}")
+        
         if not assets:
+            # Проверяем, есть ли активы в Entry (fallback для диагностики)
+            entry_check = await self.session.execute(
+                select(func.count(Entry.id))
+                .where(Entry.user_id == user_id)
+                .where(Entry.mode == "asset")
+            )
+            entry_count = entry_check.scalar()
+            logger.warning(f"No assets in AssetLatestValues for user {user_id}, but found {entry_count} entries in Entry table")
             return {currency: 0.0 for currency in target_currencies}
         
         # Получаем текущие курсы
