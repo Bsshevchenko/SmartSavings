@@ -27,7 +27,7 @@ def kb_mode_tabs(st: FormState) -> list[InlineKeyboardButton]:
         meta = MODE_META[m]
         active = "● " if st.mode == m else ""
         return InlineKeyboardButton(text=f"{active}{meta['title']}", callback_data=f"mode:set:{m}")
-    return [lab("income"), lab("expense"), lab("asset")]
+    return [lab("expense"), lab("income"), lab("asset")]
 
 def kb_amount_tab(st: FormState) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()

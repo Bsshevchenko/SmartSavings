@@ -32,12 +32,14 @@ class Currency(Base):
     code = Column(String(32), nullable=False)  # напр. USD, USDT, тенге, USDC, ...
     user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    last_used_at = Column(DateTime(timezone=True), nullable=True)  # время последнего использования
 
     user = relationship("User", back_populates="currencies")
 
     __table_args__ = (
         UniqueConstraint("user_id", "code", name="uq_currency_user_code"),
         Index("ix_currency_user_code", "user_id", "code"),
+        Index("ix_currency_user_last_used", "user_id", "last_used_at"),
     )
 
 class Category(Base):
@@ -47,6 +49,7 @@ class Category(Base):
     name = Column(String(64), nullable=False)
     user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    last_used_at = Column(DateTime(timezone=True), nullable=True)  # время последнего использования
 
     user = relationship("User", back_populates="categories")
 
@@ -54,6 +57,7 @@ class Category(Base):
         CheckConstraint("mode in ('income','expense','asset')", name="ck_category_mode"),
         UniqueConstraint("user_id", "mode", "name", name="uq_category_user_mode_name"),
         Index("ix_category_user_mode_name", "user_id", "mode", "name"),
+        Index("ix_category_user_mode_last_used", "user_id", "mode", "last_used_at"),
     )
 
 class Entry(Base):
